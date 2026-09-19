@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#009ee3">
+  <meta name="description" content="TV ao vivo, rádios, notícias e previsão do tempo em um só app.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hub">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <title>Hub — TV, rádio, notícias e clima</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,11 +21,21 @@
 <body>
 
   <header class="topbar">
+    <button class="install" id="install" hidden>Instalar app</button>
     <p class="topbar__date" id="today"></p>
     <h1 class="topbar__hello" id="hello">Olá</h1>
   </header>
 
   <main>
+
+    <!-- Favoritos (aparece quando houver algum) -->
+    <section class="section" id="favs" hidden>
+      <div class="section__head">
+        <h2>Meus favoritos</h2>
+        <button class="link" data-toggle="fav-list">Ver tudo</button>
+      </div>
+      <div class="carousel" id="fav-list"></div>
+    </section>
 
     <!-- TV -->
     <section class="section" id="tv">
@@ -102,4 +120,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-

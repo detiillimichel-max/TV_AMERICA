@@ -57,6 +57,15 @@ const CONFIG = {
     { name: 'Manaus', lat: -3.12, lon: -60.02 },
     { name: 'Curitiba', lat: -25.43, lon: -49.27 },
     { name: 'Porto Alegre', lat: -30.03, lon: -51.23 }
+  ],
+
+  quotesUrl: 'https://economia.awesomeapi.com.br/json/last/',
+  quotes: [
+    { pair: 'USD-BRL', name: 'Dólar', digits: 2 },
+    { pair: 'EUR-BRL', name: 'Euro', digits: 2 },
+    { pair: 'GBP-BRL', name: 'Libra', digits: 2 },
+    { pair: 'BTC-BRL', name: 'Bitcoin', digits: 0 },
+    { pair: 'ETH-BRL', name: 'Ethereum', digits: 0 }
   ]
 };
 
@@ -183,9 +192,81 @@ function playHls(media, kind, url, onFail) {
   if (p && p.catch) p.catch(() => { /* o navegador pode exigir um toque */ });
 }
 
+/* ================= Favoritos ================= */
+
+const HEART = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+
+function favBtn(url) {
+  const on = favs.has(url);
+  return `<button class="fav${on ? ' is-on' : ''}" data-url="${esc(url)}" aria-pressed="${on}" aria-label="${on ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}">${HEART}</button>`;
+}
+
+/* Guarda o canal/rádio inteiro no aparelho, então o favorito continua
+   disponível mesmo trocando de país ou de categoria. */
+const favs = {
+  items: [],
+
+  load() {
+    try {
+      const v = JSON.parse(localStorage.getItem('hub.favs') || '[]');
+      this.items = Array.isArray(v)
+        ? v.filter(f => f && (f.kind === 'tv' || f.kind === 'radio') && f.name && isHttps(f.url))
+        : [];
+    } catch { this.items = []; }
+  },
+
+  save() {
+    try { localStorage.setItem('hub.favs', JSON.stringify(this.items)); } catch { /* sem espaço */ }
+  },
+
+  has(url) { return this.items.some(f => f.url === url); },
+
+  toggle(kind, item) {
+    if (this.has(item.url)) {
+      this.items = this.items.filter(f => f.url !== item.url);
+    } else {
+      this.items.unshift({
+        kind, name: item.name, url: item.url, logo: item.logo || '',
+        hls: !!item.hls, place: item.place || '', tag: item.tag || ''
+      });
+    }
+    this.save();
+    this.sync();
+  },
+
+  /* Atualiza todos os corações da tela e a seção "Meus favoritos" */
+  sync() {
+    document.querySelectorAll('.fav').forEach(b => {
+      const on = this.has(b.dataset.url);
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', on ? 'Remover dos favoritos' : 'Adicionar aos favoritos');
+    });
+    this.render();
+  },
+
+  render() {
+    const box = $('#fav-list');
+    const x = box.scrollLeft;
+    $('#favs').hidden = !this.items.length;
+    box.innerHTML = this.items.map((f, i) => f.kind === 'tv' ? tvCard(f, i) : radioCard(f, i)).join('');
+    box.scrollLeft = x;
+  }
+};
+
+/* Clique num card: coração alterna favorito, o resto abre o canal/rádio */
+function cardClick(e, getItems, kindOf, open) {
+  const card = e.target.closest('.card[data-idx]');
+  if (!card) return;
+  const item = getItems()[+card.dataset.idx];
+  if (!item) return;
+  if (e.target.closest('.fav')) favs.toggle(kindOf(item), item);
+  else open(item);
+}
+
 /* ================= TV ================= */
 
-const tv = { code: 'br', items: [], open: false };
+const tv = { code: 'br', all: [], items: [], open: false };
 const sheet = $('#sheet');
 const video = $('#video');
 
@@ -218,7 +299,7 @@ function parseM3U(text) {
       cur = null;
     }
   }
-  return out.slice(0, 80);
+  return out.slice(0, 400);
 }
 
 function tvCard(ch, i) {
@@ -226,11 +307,14 @@ function tvCard(ch, i) {
   const thumb = ch.logo
     ? `<img src="${esc(ch.logo)}" alt="" loading="lazy" data-ini="${esc(ini)}">`
     : `<b>${esc(ini)}</b>`;
-  return `<button class="card card--tv" data-idx="${i}">
-    <span class="thumb">${thumb}</span>
-    <span class="card__title">${esc(ch.name)}</span>
-    <span class="badge">Ao vivo</span>
-  </button>`;
+  return `<div class="card card--tv" data-idx="${i}">
+    <button class="card__main" aria-label="Assistir ${esc(ch.name)}">
+      <span class="thumb">${thumb}</span>
+      <span class="card__title">${esc(ch.name)}</span>
+      <span class="badge">Ao vivo</span>
+    </button>
+    ${favBtn(ch.url)}
+  </div>`;
 }
 
 async function loadTV(code = tv.code) {
@@ -244,9 +328,10 @@ async function loadTV(code = tv.code) {
       items = parseM3U(await fetchText(CONFIG.tvUrl(code)));
       if (items.length) cache.set(key, items);
     }
-    tv.items = items;
+    tv.all = items;
+    tv.items = items.slice(0, 80);
     if (!items.length) { showError(box, 'tv', 'Nenhum canal disponível para este país agora.'); return; }
-    box.innerHTML = items.map(tvCard).join('');
+    box.innerHTML = tv.items.map(tvCard).join('');
     box.scrollLeft = 0;
   } catch {
     showError(box, 'tv', 'Não foi possível carregar os canais. Verifique a conexão.');
@@ -281,26 +366,45 @@ video.addEventListener('error', () => { if (tv.open && video.getAttribute('src')
 sheet.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeTV(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && tv.open) closeTV(); });
 
-$('#tv-list').addEventListener('click', e => {
-  const b = e.target.closest('[data-idx]');
-  if (b && tv.items[+b.dataset.idx]) openTV(tv.items[+b.dataset.idx]);
-});
+$('#tv-list').addEventListener('click', e => cardClick(e, () => tv.items, () => 'tv', openTV));
 
 /* ================= Rádios ================= */
 
-const radio = { tag: '', items: [], cur: -1 };
+const radio = { tag: '', items: [], curUrl: '' };
 const audio = $('#audio');
 const mini = $('#mini');
 
-async function fetchStations(tag) {
+async function fetchStations({ tag = '', name = '' } = {}) {
   const qs = new URLSearchParams({
     countrycode: 'BR', hidebroken: 'true', order: 'clickcount', reverse: 'true', limit: '100'
   });
   if (tag) qs.set('tag', tag);
+  if (name) qs.set('name', name);
   for (const host of CONFIG.radioHosts) {
     try { return await fetchJSON(`${host}/json/stations/search?${qs}`, 10000); } catch { /* tenta o próximo servidor */ }
   }
   throw new Error('radio');
+}
+
+/* Filtra (só https, sem nomes repetidos) e simplifica o retorno do Radio Browser */
+function toRadioItems(list, limit) {
+  const seen = new Set();
+  return list
+    .filter(s => {
+      const name = (s.name || '').trim().toLowerCase();
+      if (!name || seen.has(name) || !isHttps(s.url_resolved)) return false;
+      seen.add(name);
+      return true;
+    })
+    .slice(0, limit)
+    .map(s => ({
+      name: s.name.trim(),
+      url: s.url_resolved,
+      hls: s.hls === 1,
+      logo: isHttps(s.favicon) ? s.favicon : '',
+      place: s.state || '',
+      tag: (s.tags || '').split(',')[0].trim()
+    }));
 }
 
 function radioCard(st, i) {
@@ -308,39 +412,25 @@ function radioCard(st, i) {
   const thumb = st.logo
     ? `<img src="${esc(st.logo)}" alt="" loading="lazy" data-ini="${esc(ini)}">`
     : `<b>${esc(ini)}</b>`;
-  return `<button class="card card--radio${i === radio.cur ? ' is-active' : ''}" data-idx="${i}">
-    <span class="thumb">${thumb}</span>
-    <span class="card__title">${esc(st.name)}</span>
-    <span class="card__sub">${esc(st.place || st.tag || 'Rádio')}</span>
-  </button>`;
+  return `<div class="card card--radio${st.url === radio.curUrl ? ' is-active' : ''}" data-idx="${i}" data-url="${esc(st.url)}">
+    <button class="card__main" aria-label="Ouvir ${esc(st.name)}">
+      <span class="thumb">${thumb}</span>
+      <span class="card__title">${esc(st.name)}</span>
+      <span class="card__sub">${esc(st.place || st.tag || 'Rádio')}</span>
+    </button>
+    ${favBtn(st.url)}
+  </div>`;
 }
 
 async function loadRadios(tag = radio.tag) {
   radio.tag = tag;
-  radio.cur = -1;
   const box = $('#radio-list');
   skeleton(box, 6, 'card--radio');
   try {
     const key = 'hub.radio.' + (tag || 'top');
     let items = cache.get(key, 6 * HOUR);
     if (!items) {
-      const seen = new Set();
-      items = (await fetchStations(tag))
-        .filter(s => {
-          const name = (s.name || '').trim().toLowerCase();
-          if (!name || seen.has(name) || !isHttps(s.url_resolved)) return false;
-          seen.add(name);
-          return true;
-        })
-        .slice(0, 40)
-        .map(s => ({
-          name: s.name.trim(),
-          url: s.url_resolved,
-          hls: s.hls === 1,
-          logo: isHttps(s.favicon) ? s.favicon : '',
-          place: s.state || '',
-          tag: (s.tags || '').split(',')[0].trim()
-        }));
+      items = toRadioItems(await fetchStations({ tag }), 40);
       if (items.length) cache.set(key, items);
     }
     radio.items = items;
@@ -366,13 +456,12 @@ function setMiniLogo(st) {
   }
 }
 
-function playRadio(idx) {
-  const st = radio.items[idx];
-  if (!st) return;
+function playRadio(st) {
+  if (!st || !isHttps(st.url)) return;
   closeTV();
-  radio.cur = idx;
-  document.querySelectorAll('#radio-list .card').forEach(c =>
-    c.classList.toggle('is-active', +c.dataset.idx === idx));
+  radio.curUrl = st.url;
+  document.querySelectorAll('.card--radio').forEach(c =>
+    c.classList.toggle('is-active', c.dataset.url === st.url));
 
   $('#mini-name').textContent = st.name;
   $('#mini-status').textContent = 'Conectando…';
@@ -401,30 +490,31 @@ function playRadio(idx) {
 function radioFail() { $('#mini-status').textContent = 'Sem sinal. Tente outra rádio.'; }
 
 function stopRadio() {
-  radio.cur = -1;
+  radio.curUrl = '';
   resetMedia(audio, 'audio');
   mini.classList.remove('is-open');
   mini.setAttribute('aria-hidden', 'true');
-  document.querySelectorAll('#radio-list .card.is-active').forEach(c => c.classList.remove('is-active'));
+  document.querySelectorAll('.card--radio.is-active').forEach(c => c.classList.remove('is-active'));
 }
 
 audio.addEventListener('playing', () => {
   $('#mini-status').textContent = 'Ao vivo';
   $('#mini-toggle').textContent = '⏸';
 });
-audio.addEventListener('pause', () => { if (radio.cur >= 0) $('#mini-toggle').textContent = '▶'; });
-audio.addEventListener('waiting', () => { if (radio.cur >= 0) $('#mini-status').textContent = 'Carregando…'; });
-audio.addEventListener('error', () => { if (radio.cur >= 0 && audio.getAttribute('src')) radioFail(); });
+audio.addEventListener('pause', () => { if (radio.curUrl) $('#mini-toggle').textContent = '▶'; });
+audio.addEventListener('waiting', () => { if (radio.curUrl) $('#mini-status').textContent = 'Carregando…'; });
+audio.addEventListener('error', () => { if (radio.curUrl && audio.getAttribute('src')) radioFail(); });
 
 $('#mini-toggle').addEventListener('click', () => {
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 });
 $('#mini-close').addEventListener('click', stopRadio);
 
-$('#radio-list').addEventListener('click', e => {
-  const b = e.target.closest('[data-idx]');
-  if (b) playRadio(+b.dataset.idx);
-});
+$('#radio-list').addEventListener('click', e => cardClick(e, () => radio.items, () => 'radio', playRadio));
+
+/* Lista de favoritos mistura TV e rádio */
+$('#fav-list').addEventListener('click', e =>
+  cardClick(e, () => favs.items, f => f.kind, f => (f.kind === 'tv' ? openTV(f) : playRadio(f))));
 
 /* ================= Notícias ================= */
 
@@ -540,6 +630,7 @@ async function loadWeather() {
 }
 
 /* "Meu local": pede a localização só quando a pessoa tocar no card */
+
 const myLoc = {
   slot: $('#my-slot'),
 
@@ -586,6 +677,111 @@ $('#my-slot').addEventListener('click', e => {
   if (e.target.closest('#my-loc')) myLoc.ask();
 });
 
+/* ================= Cotações ================= */
+
+const brl = (n, digits) => new Intl.NumberFormat('pt-BR', {
+  style: 'currency', currency: 'BRL', minimumFractionDigits: digits, maximumFractionDigits: digits
+}).format(n);
+
+const pct = n => (n > 0 ? '+' : '') + new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2
+}).format(n) + '%';
+
+function quoteCard(q, d) {
+  const bid = parseFloat(d.bid);
+  const change = parseFloat(d.pctChange) || 0;
+  const dir = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+  const glyph = change > 0 ? '▲' : change < 0 ? '▼' : '–';
+  return `<div class="card card--quote">
+    <span class="q__name">${esc(q.name)}</span>
+    <span class="q__pair">${esc(q.pair.replace('-', '/'))}</span>
+    <span class="q__value">${brl(bid, q.digits)}</span>
+    <span class="q__change q__change--${dir}">${glyph} ${pct(change)}</span>
+    <span class="q__range">Máx ${brl(parseFloat(d.high), q.digits)}<br>Mín ${brl(parseFloat(d.low), q.digits)}</span>
+  </div>`;
+}
+
+async function loadQuotes() {
+  const box = $('#quotes-list');
+  skeleton(box, 5, 'card--quote');
+  try {
+    let data = cache.get('hub.quotes', 3 * MIN);
+    if (!data) {
+      data = await fetchJSON(CONFIG.quotesUrl + CONFIG.quotes.map(q => q.pair).join(','));
+      cache.set('hub.quotes', data);
+    }
+    const cards = CONFIG.quotes.map(q => {
+      const d = data[q.pair.replace('-', '')];
+      return d && isFinite(parseFloat(d.bid)) ? quoteCard(q, d) : '';
+    }).join('');
+    if (!cards) throw new Error('quotes');
+    box.innerHTML = cards;
+  } catch {
+    showError(box, 'quotes', 'Não foi possível carregar as cotações agora.');
+  }
+}
+
+/* ================= Busca ================= */
+
+const search = { seq: 0, items: [], timer: 0 };
+const qInput = $('#q');
+
+/* Ignora maiúsculas e acentos: "musica" encontra "Música" */
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+function renderResults(waitingRadio) {
+  const box = $('#search-list');
+  if (search.items.length) {
+    box.innerHTML = search.items.map((it, i) => it.kind === 'tv' ? tvCard(it, i) : radioCard(it, i)).join('');
+    box.scrollLeft = 0;
+  } else if (waitingRadio) {
+    skeleton(box, 4, 'card--tv');
+  } else {
+    const q = esc(qInput.value.trim());
+    box.innerHTML = `<div class="empty">Nada encontrado para “${q}”.<br>A busca de TV usa o país selecionado.</div>`;
+  }
+}
+
+async function runSearch(raw) {
+  const seq = ++search.seq;
+  const q = raw.trim();
+  const term = norm(q);
+  const sec = $('#results');
+
+  if (term.length < 2) { sec.hidden = true; search.items = []; return; }
+  sec.hidden = false;
+
+  /* TV: filtra a lista do país selecionado, na hora */
+  search.items = tv.all.filter(c => norm(c.name).includes(term)).slice(0, 20).map(c => ({ ...c, kind: 'tv' }));
+  renderResults(true);
+
+  /* Rádio: busca por nome no Radio Browser */
+  let radios = [];
+  try {
+    radios = toRadioItems(await fetchStations({ name: q }), 20).map(r => ({ ...r, kind: 'radio' }));
+  } catch { /* segue só com os resultados de TV */ }
+  if (seq !== search.seq) return; /* chegou uma busca mais nova */
+
+  search.items = [...search.items, ...radios];
+  renderResults(false);
+}
+
+qInput.addEventListener('input', () => {
+  clearTimeout(search.timer);
+  const v = qInput.value;
+  if (norm(v.trim()).length < 2) runSearch(v);
+  else search.timer = setTimeout(() => runSearch(v), 350);
+});
+qInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  clearTimeout(search.timer);
+  runSearch(qInput.value);
+  qInput.blur();
+});
+
+$('#search-list').addEventListener('click', e =>
+  cardClick(e, () => search.items, f => f.kind, f => (f.kind === 'tv' ? openTV(f) : playRadio(f))));
+
 /* ================= Interface geral ================= */
 
 document.addEventListener('click', e => {
@@ -599,7 +795,7 @@ document.addEventListener('click', e => {
   /* Botão "Tentar de novo" dos estados de erro */
   const retry = e.target.closest('[data-retry]');
   if (retry) {
-    const map = { tv: () => loadTV(), radio: () => loadRadios(), news: loadNews, weather: loadWeather };
+    const map = { tv: () => loadTV(), radio: () => loadRadios(), news: loadNews, weather: loadWeather, quotes: loadQuotes };
     if (map[retry.dataset.retry]) map[retry.dataset.retry]();
   }
 });
@@ -618,7 +814,7 @@ function watchSections() {
   const tabs = [...document.querySelectorAll('.tabbar a')];
   const io = new IntersectionObserver(entries => {
     entries.forEach(en => {
-      if (en.isIntersecting) {
+      if (en.isIntersecting && tabs.some(t => t.hash === '#' + en.target.id)) {
         tabs.forEach(t => t.classList.toggle('is-active', t.hash === '#' + en.target.id));
       }
     });
@@ -626,9 +822,33 @@ function watchSections() {
   document.querySelectorAll('main section').forEach(s => io.observe(s));
 }
 
+/* Botão "Instalar app" (Android/Chrome). No iPhone: Compartilhar > Adicionar à Tela de Início. */
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installEvent = e;
+  $('#install').hidden = false;
+});
+window.addEventListener('appinstalled', () => { $('#install').hidden = true; });
+$('#install').addEventListener('click', async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  try { await installEvent.userChoice; } catch { /* ok */ }
+  installEvent = null;
+  $('#install').hidden = true;
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* só funciona em https ou localhost */ });
+  });
+}
+
 function init() {
   setHeader();
   watchSections();
+  favs.load();
+  favs.render();
 
   renderChips($('#tv-chips'), CONFIG.tvCountries, tv.code, key => loadTV(key));
   renderChips($('#radio-chips'), CONFIG.radioTags, radio.tag, key => { stopRadio(); loadRadios(key); });
@@ -638,9 +858,8 @@ function init() {
   loadRadios();
   loadNews();
   loadWeather();
+  loadQuotes();
 }
 
 init();
-
-
-  
+                               

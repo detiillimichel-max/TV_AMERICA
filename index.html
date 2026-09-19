@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#009ee3">
+  <title>Hub — TV, rádio, notícias e clima</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <p class="topbar__date" id="today"></p>
+    <h1 class="topbar__hello" id="hello">Olá</h1>
+  </header>
+
+  <main>
+
+    <!-- TV -->
+    <section class="section" id="tv">
+      <div class="section__head">
+        <h2>TV ao vivo</h2>
+        <button class="link" data-toggle="tv-list">Ver tudo</button>
+      </div>
+      <div class="chips" id="tv-chips"></div>
+      <div class="carousel" id="tv-list"></div>
+    </section>
+
+    <!-- Rádios -->
+    <section class="section" id="radio">
+      <div class="section__head">
+        <h2>Rádios</h2>
+        <button class="link" data-toggle="radio-list">Ver tudo</button>
+      </div>
+      <div class="chips" id="radio-chips"></div>
+      <div class="carousel" id="radio-list"></div>
+    </section>
+
+    <!-- Notícias -->
+    <section class="section" id="news">
+      <div class="section__head">
+        <h2>Notícias</h2>
+        <button class="link" data-toggle="news-list">Ver tudo</button>
+      </div>
+      <div class="carousel" id="news-list"></div>
+    </section>
+
+    <!-- Previsão do tempo -->
+    <section class="section" id="weather">
+      <div class="section__head">
+        <h2>Previsão do tempo</h2>
+        <button class="link" data-toggle="weather-list">Ver tudo</button>
+      </div>
+      <div class="carousel" id="weather-list">
+        <div class="slot" id="my-slot"></div>
+        <div class="slot" id="city-slot"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Player de TV (folha inferior) -->
+  <div class="sheet" id="sheet" aria-hidden="true">
+    <div class="sheet__backdrop" data-close></div>
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet__head">
+        <div class="sheet__name">
+          <strong id="sheet-title"></strong>
+          <span class="badge">Ao vivo</span>
+        </div>
+        <button class="icon-btn" data-close aria-label="Fechar player">✕</button>
+      </div>
+      <video id="video" controls playsinline></video>
+      <p class="sheet__msg" id="sheet-msg" role="status"></p>
+    </div>
+  </div>
+
+  <!-- Mini player de rádio -->
+  <div class="mini" id="mini" aria-hidden="true">
+    <span class="mini__logo" id="mini-logo"></span>
+    <div class="mini__info">
+      <strong id="mini-name"></strong>
+      <span id="mini-status"></span>
+    </div>
+    <button class="icon-btn" id="mini-toggle" aria-label="Pausar ou tocar">⏸</button>
+    <button class="icon-btn" id="mini-close" aria-label="Fechar rádio">✕</button>
+  </div>
+  <audio id="audio" preload="none"></audio>
+
+  <!-- Navegação -->
+  <nav class="tabbar" aria-label="Seções">
+    <a href="#tv"><span class="tab__icon">📺</span>TV</a>
+    <a href="#radio"><span class="tab__icon">📻</span>Rádios</a>
+    <a href="#news"><span class="tab__icon">📰</span>Notícias</a>
+    <a href="#weather"><span class="tab__icon">⛅</span>Clima</a>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+

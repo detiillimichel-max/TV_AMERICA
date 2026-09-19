@@ -371,4 +371,4 @@ button.card--weather { font-weight: 700; justify-content: center; }
   .mini { left: 50%; right: auto; width: 696px; transform: translate(-50%, 160%); }
   .mini.is-open { transform: translate(-50%, 0); }
   .sheet__panel { left: 50%; right: auto; width: 720px; margin-left: -360px; }
- }
+  }
